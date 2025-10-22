@@ -1,0 +1,20 @@
+{
+  "name": "discord-time-bot",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {},
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "chrono-node": "^2.9.0",
+    "dayjs": "^1.11.18",
+    "discord.js": "^14.23.2",
+    "dotenv": "^17.2.3"
+  },
+  "devDependencies": {
+    "jest": "^30.2.0"
+  }
+}
