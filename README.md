@@ -6,6 +6,7 @@ A Discord bot that converts natural language time expressions into Discord times
 
 - `/time`: Convert one or two times to Discord time or time range format.
 - `/datetime`: Convert a single date/time to Discord full date and time format.
+- `/settimezone`: Set your timezone using a UTC offset dropdown for accurate time conversion.
 - Uses [chrono-node](https://github.com/wanasit/chrono) for natural language date parsing.
 
 ## Setup
@@ -40,6 +41,7 @@ node index.js
 
 ## Example Usage
 
+- `/settimezone timezone: UTC+7` (select from dropdown)
 - `/time start: 3pm end: 6pm` → `<t:...:t> → <t:...:t>`
 - `/datetime input: next Friday` → `<t:...:f>`
 
