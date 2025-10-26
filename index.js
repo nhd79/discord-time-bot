@@ -139,8 +139,17 @@ client.on("interactionCreate", async (interaction) => {
     const userId = interaction.user.id;
     const userTz = userTimezones[userId] || "UTC";
 
-    // Parse date/time input
-    const referenceDate = DateTime.now().setZone(userTz).toJSDate();
+    // Get current time in user's timezone as reference
+    const nowInUserTz = DateTime.now().setZone(userTz);
+    const referenceDate = new Date(
+      nowInUserTz.year,
+      nowInUserTz.month - 1,
+      nowInUserTz.day,
+      nowInUserTz.hour,
+      nowInUserTz.minute,
+      nowInUserTz.second
+    );
+
     const results = chrono.parse(input, referenceDate);
 
     if (results.length === 0) {
