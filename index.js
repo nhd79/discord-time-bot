@@ -8,6 +8,46 @@ dotenv.config();
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
+// Helper function: Convert JS Date to user's timezone-aware Date
+function parseTimeInUserTimezone(jsDate, timezone) {
+  return DateTime.fromObject(
+    {
+      year: jsDate.getFullYear(),
+      month: jsDate.getMonth() + 1,
+      day: jsDate.getDate(),
+      hour: jsDate.getHours(),
+      minute: jsDate.getMinutes(),
+      second: jsDate.getSeconds(),
+    },
+    { zone: timezone }
+  ).toJSDate();
+}
+
+// Helper function: Save user timezones to file
+function saveUserTimezones() {
+  fs.writeFileSync(
+    "./user-timezones.js",
+    `const userTimezones = ${JSON.stringify(
+      userTimezones,
+      null,
+      2
+    )};\nexport default userTimezones;\n`
+  );
+}
+
+// Helper function: Parse natural language time input
+function parseNaturalLanguageTime(input, userTimezone) {
+  const referenceDate = DateTime.now().setZone(userTimezone).toJSDate();
+  const results = chrono.parse(input, referenceDate);
+
+  if (results.length === 0) {
+    return null;
+  }
+
+  const parsedDate = results[0].start?.date();
+  return parseTimeInUserTimezone(parsedDate, userTimezone);
+}
+
 client.once("clientReady", () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 });
@@ -18,6 +58,7 @@ client.on("interactionCreate", async (interaction) => {
   if (interaction.commandName === "settimezone") {
     const tz = interaction.options.getString("timezone");
     const userId = interaction.user.id;
+
     // Validate: only allow Etc/GMT offsets
     if (!tz || !/^Etc\/GMT([+-]?\d{1,2})?$/.test(tz)) {
       await interaction.reply({
@@ -27,76 +68,68 @@ client.on("interactionCreate", async (interaction) => {
       });
       return;
     }
+
     userTimezones[userId] = tz;
-    // Save to file
-    fs.writeFileSync(
-      "./user-timezones.js",
-      `const userTimezones = ${JSON.stringify(
-        userTimezones,
-        null,
-        2
-      )};\nexport default userTimezones;\n`
-    );
+    saveUserTimezones();
+
     await interaction.reply({
       content: `✅ Timezone set to \`${tz}\` for your account!`,
       ephemeral: true,
     });
     return;
   }
+  // Handle /time command
   if (interaction.commandName === "time") {
     const startInput = interaction.options.getString("start");
     const endInput = interaction.options.getString("end");
     const userId = interaction.user.id;
     const userTz = userTimezones[userId] || "UTC";
-    // Use Luxon to get now in user's timezone
-    const now = DateTime.now().setZone(userTz).toJSDate();
 
-    let startDate, endDate;
-    // Parse start
-    const startResults = chrono.parse(startInput, now);
-    if (startResults.length === 0) {
+    // Parse start time
+    const startDate = parseNaturalLanguageTime(startInput, userTz);
+    if (!startDate) {
       await interaction.reply({
         content: "❌ Couldn't understand the start time.",
         ephemeral: true,
       });
       return;
     }
-    startDate = startResults[0].start?.date();
-    // Convert to user's timezone
-    startDate = DateTime.fromJSDate(startDate).setZone(userTz).toJSDate();
 
-    // Parse end if provided
+    // Parse end time if provided
+    let endDate = null;
     if (endInput) {
-      const endResults = chrono.parse(endInput, now);
-      if (endResults.length === 0) {
+      endDate = parseNaturalLanguageTime(endInput, userTz);
+      if (!endDate) {
         await interaction.reply({
           content: "❌ Couldn't understand the end time.",
           ephemeral: true,
         });
         return;
       }
-      endDate = endResults[0].start?.date();
-      endDate = DateTime.fromJSDate(endDate).setZone(userTz).toJSDate();
     }
 
+    // Convert to Unix timestamps
     const unixStart = Math.floor(startDate.getTime() / 1000);
     const unixEnd = endDate ? Math.floor(endDate.getTime() / 1000) : null;
 
-    let reply;
-    if (unixEnd) {
-      reply = `<t:${unixStart}:t> → <t:${unixEnd}:t>`;
-    } else {
-      reply = `<t:${unixStart}:t>`;
-    }
+    // Build Discord timestamp reply
+    const reply = unixEnd
+      ? `<t:${unixStart}:t> → <t:${unixEnd}:t>`
+      : `<t:${unixStart}:t>`;
+
     await interaction.reply({ content: reply });
     return;
   }
+  // Handle /datetime command
   if (interaction.commandName === "datetime") {
     const input = interaction.options.getString("input");
     const userId = interaction.user.id;
     const userTz = userTimezones[userId] || "UTC";
-    const now = DateTime.now().setZone(userTz).toJSDate();
-    const results = chrono.parse(input, now);
+
+    // Parse date/time input
+    const referenceDate = DateTime.now().setZone(userTz).toJSDate();
+    const results = chrono.parse(input, referenceDate);
+
     if (results.length === 0) {
       await interaction.reply({
         content: "❌ Couldn't understand that time.",
@@ -104,21 +137,24 @@ client.on("interactionCreate", async (interaction) => {
       });
       return;
     }
+
+    // Parse start and optional end times
     const result = results[0];
-    let start = result.start?.date();
-    let end = result.end?.date();
-    start = DateTime.fromJSDate(start).setZone(userTz).toJSDate();
-    if (end) {
-      end = DateTime.fromJSDate(end).setZone(userTz).toJSDate();
-    }
+    const parsedStart = result.start?.date();
+    const parsedEnd = result.end?.date();
+
+    const start = parseTimeInUserTimezone(parsedStart, userTz);
+    const end = parsedEnd ? parseTimeInUserTimezone(parsedEnd, userTz) : null;
+
+    // Convert to Unix timestamps
     const unixStart = Math.floor(start.getTime() / 1000);
     const unixEnd = end ? Math.floor(end.getTime() / 1000) : null;
-    let reply;
-    if (unixEnd) {
-      reply = `<t:${unixStart}:f> → <t:${unixEnd}:f>`;
-    } else {
-      reply = `<t:${unixStart}:f>`;
-    }
+
+    // Build Discord timestamp reply
+    const reply = unixEnd
+      ? `<t:${unixStart}:f> → <t:${unixEnd}:f>`
+      : `<t:${unixStart}:f>`;
+
     await interaction.reply({ content: reply });
     return;
   }
