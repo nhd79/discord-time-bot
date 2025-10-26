@@ -37,7 +37,20 @@ function saveUserTimezones() {
 
 // Helper function: Parse natural language time input
 function parseNaturalLanguageTime(input, userTimezone) {
-  const referenceDate = DateTime.now().setZone(userTimezone).toJSDate();
+  // Get current time in user's timezone as reference
+  const nowInUserTz = DateTime.now().setZone(userTimezone);
+
+  // Create a reference date that chrono will use as "now"
+  // We need to trick chrono into thinking the current time is in the user's timezone
+  const referenceDate = new Date(
+    nowInUserTz.year,
+    nowInUserTz.month - 1,
+    nowInUserTz.day,
+    nowInUserTz.hour,
+    nowInUserTz.minute,
+    nowInUserTz.second
+  );
+
   const results = chrono.parse(input, referenceDate);
 
   if (results.length === 0) {
