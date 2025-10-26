@@ -1,7 +1,9 @@
 import { Client, GatewayIntentBits } from "discord.js";
 import * as chrono from "chrono-node";
-import dayjs from "dayjs";
+import { DateTime } from "luxon";
 import dotenv from "dotenv";
+import fs from "fs";
+import userTimezones from "./user-timezones.js";
 dotenv.config();
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
@@ -12,10 +14,42 @@ client.once("clientReady", () => {
 
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
+  // Handle /settimezone command
+  if (interaction.commandName === "settimezone") {
+    const tz = interaction.options.getString("timezone");
+    const userId = interaction.user.id;
+    // Validate: only allow Etc/GMT offsets
+    if (!tz || !/^Etc\/GMT([+-]?\d{1,2})?$/.test(tz)) {
+      await interaction.reply({
+        content:
+          "❌ Invalid timezone format. Please select a UTC offset from the dropdown.",
+        ephemeral: true,
+      });
+      return;
+    }
+    userTimezones[userId] = tz;
+    // Save to file
+    fs.writeFileSync(
+      "./user-timezones.js",
+      `const userTimezones = ${JSON.stringify(
+        userTimezones,
+        null,
+        2
+      )};\nexport default userTimezones;\n`
+    );
+    await interaction.reply({
+      content: `✅ Timezone set to \`${tz}\` for your account!`,
+      ephemeral: true,
+    });
+    return;
+  }
   if (interaction.commandName === "time") {
     const startInput = interaction.options.getString("start");
     const endInput = interaction.options.getString("end");
-    const now = new Date();
+    const userId = interaction.user.id;
+    const userTz = userTimezones[userId] || "UTC";
+    // Use Luxon to get now in user's timezone
+    const now = DateTime.now().setZone(userTz).toJSDate();
 
     let startDate, endDate;
     // Parse start
@@ -28,6 +62,8 @@ client.on("interactionCreate", async (interaction) => {
       return;
     }
     startDate = startResults[0].start?.date();
+    // Convert to user's timezone
+    startDate = DateTime.fromJSDate(startDate).setZone(userTz).toJSDate();
 
     // Parse end if provided
     if (endInput) {
@@ -40,6 +76,7 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
       endDate = endResults[0].start?.date();
+      endDate = DateTime.fromJSDate(endDate).setZone(userTz).toJSDate();
     }
 
     const unixStart = Math.floor(startDate.getTime() / 1000);
@@ -56,7 +93,9 @@ client.on("interactionCreate", async (interaction) => {
   }
   if (interaction.commandName === "datetime") {
     const input = interaction.options.getString("input");
-    const now = new Date();
+    const userId = interaction.user.id;
+    const userTz = userTimezones[userId] || "UTC";
+    const now = DateTime.now().setZone(userTz).toJSDate();
     const results = chrono.parse(input, now);
     if (results.length === 0) {
       await interaction.reply({
@@ -66,8 +105,12 @@ client.on("interactionCreate", async (interaction) => {
       return;
     }
     const result = results[0];
-    const start = result.start?.date();
-    const end = result.end?.date();
+    let start = result.start?.date();
+    let end = result.end?.date();
+    start = DateTime.fromJSDate(start).setZone(userTz).toJSDate();
+    if (end) {
+      end = DateTime.fromJSDate(end).setZone(userTz).toJSDate();
+    }
     const unixStart = Math.floor(start.getTime() / 1000);
     const unixEnd = end ? Math.floor(end.getTime() / 1000) : null;
     let reply;
